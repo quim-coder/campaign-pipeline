@@ -14,9 +14,9 @@
     --bg-card-hover: #262C32;
     --border: #2C3238;
     --border-soft: #23282D;
-    --text: #E9E7E2;
-    --text-dim: #9AA1A8;
-    --text-faint: #656C73;
+    --text: #FFFFFF;
+    --text-dim: #FFFFFF;
+    --text-faint: #FFFFFF;
 
     --st-totest: #7C8B99;
     --st-running: #4FBDA8;
@@ -403,7 +403,7 @@ function renderMatrix(){
       <td class="geo-cell">${escapeHtml(o.geo||'—')}</td>
       ${PLATFORMS.map(p=>{
         const c = cellFor(o.id, p);
-        if(!c){
+        if(!c || c.archived){
           return `<td><div class="cell-slot" data-offer="${o.id}" data-platform="${p}">+</div></td>`;
         }
         const st = statusOf(c.status);
@@ -436,7 +436,7 @@ function renderTable(){
   offers.forEach(o=>{
     PLATFORMS.forEach(p=>{
       const c = cellFor(o.id, p);
-      if(c) rows.push({o,c,p});
+      if(c && !c.archived) rows.push({o,c,p});
     });
   });
   const statusFilter = $('#filterStatus').value;
@@ -557,7 +557,10 @@ function openCellDrawer(offerId, platform){
       <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
       <button class="btn btn-primary" id="saveBtn">${c ? 'Save changes' : 'Add test'}</button>
     </div>
-    ${c ? '<button class="danger-link" id="deleteBtn">Remove this platform test</button>' : ''}
+    ${c ? `<div style="display:flex; gap:8px; margin-top:12px;">
+      <button class="btn btn-ghost" id="archiveBtn" style="flex:1; justify-content:center;">${c?.archived ? 'Unarchive' : 'Archive'}</button>
+      <button class="danger-link" id="deleteBtn" style="flex:1; margin:0;">Delete</button>
+    </div>` : ''}
   `;
 
   let selectedStatus = c?.status || 'to_test';
@@ -581,7 +584,10 @@ function openCellDrawer(offerId, platform){
 
   $('#closeDrawer').addEventListener('click', closeDrawer);
   $('#cancelBtn').addEventListener('click', closeDrawer);
-  if(c) $('#deleteBtn').addEventListener('click', ()=> deleteCell(c.id));
+  if(c) {
+    $('#deleteBtn').addEventListener('click', ()=> deleteCell(c.id));
+    $('#archiveBtn').addEventListener('click', ()=> archiveCell(c.id));
+  }
   $('#saveBtn').addEventListener('click', ()=> saveCellFromDrawer(selectedStatus));
   $('#overlay').classList.add('open');
 }
@@ -613,6 +619,17 @@ async function deleteCell(id){
   closeDrawer();
   render();
   showToast('Test removed');
+}
+
+async function archiveCell(id){
+  const idx = state.cells.findIndex(c=>c.id===id);
+  if(idx>-1){
+    state.cells[idx].archived = !state.cells[idx].archived;
+    await saveState();
+    closeDrawer();
+    render();
+    showToast(state.cells[idx].archived ? 'Test archived' : 'Test unarchived');
+  }
 }
 
 function closeDrawer(){ $('#overlay').classList.remove('open'); drawerMode=null; drawerOfferId=null; drawerPlatform=null; }
