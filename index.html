@@ -109,6 +109,20 @@
   .action-btn.archive{ color: #D9C458; }
   .action-btn.delete{ color: #C0524A; }
 
+  .country-selector{ position:relative; }
+  .country-picker{ display:none; position:absolute; top:100%; left:0; right:0; background: var(--bg-card); border:1px solid var(--border); border-radius:6px; z-index:100; max-height:300px; overflow-y:auto; margin-top:4px; }
+  .country-picker.open{ display:block; }
+  .country-search{ padding:8px; border-bottom:1px solid var(--border); position:sticky; top:0; background: var(--bg-card); }
+  .country-search input{ width:100%; background: var(--bg-panel); border:1px solid var(--border); color: var(--text); font-size:13px; padding:6px 8px; border-radius:4px; }
+  .country-search input:focus{ outline:none; border-color: #FFFFFF; }
+  .country-option{ padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--border-soft); }
+  .country-option:hover{ background: var(--bg-panel); }
+  .country-option.selected{ background: var(--border); color: #4FBDA8; font-weight:500; }
+  .country-chips{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; min-height:24px; }
+  .country-chip{ font-size:12px; background: var(--border); color: var(--text); padding:4px 8px; border-radius:12px; display:flex; align-items:center; gap:4px; }
+  .country-chip .remove{ cursor:pointer; font-weight:bold; margin-left:2px; }
+  .country-chip .remove:hover{ color: #C0524A; }
+
   .cell-slot{ width: 100%; height: 40px; border-radius: 6px; cursor:pointer; display:flex; align-items:center; justify-content:center; border: 1px dashed var(--border); color: #FFFFFF; font-size: 16px; }
   .cell-slot:hover{ border-color: #FFFFFF; color: #FFFFFF; }
   .status-cell{ width: 100%; min-height: 40px; border-radius: 6px; cursor:pointer; padding: 6px 8px; display:flex; flex-direction:column; justify-content:center; gap:2px; }
@@ -261,6 +275,17 @@ const STATUSES = [
   { key:'killed',  label:'Killed', color:'var(--st-killed)' },
 ];
 const PLATFORMS = ['OUTBRAIN','MEDIAGO','TABOOLA','MGID','ADSKEEPER','NEWSBREAK'];
+const COUNTRIES = [
+  {code:'US', name:'United States'}, {code:'GB', name:'United Kingdom'}, {code:'CA', name:'Canada'},
+  {code:'AU', name:'Australia'}, {code:'DE', name:'Germany'}, {code:'FR', name:'France'},
+  {code:'IT', name:'Italy'}, {code:'ES', name:'Spain'}, {code:'NL', name:'Netherlands'},
+  {code:'SE', name:'Sweden'}, {code:'NO', name:'Norway'}, {code:'DK', name:'Denmark'},
+  {code:'BE', name:'Belgium'}, {code:'CH', name:'Switzerland'}, {code:'AT', name:'Austria'},
+  {code:'PL', name:'Poland'}, {code:'CZ', name:'Czech Republic'}, {code:'RO', name:'Romania'},
+  {code:'BR', name:'Brazil'}, {code:'MX', name:'Mexico'}, {code:'AR', name:'Argentina'},
+  {code:'JP', name:'Japan'}, {code:'CN', name:'China'}, {code:'IN', name:'India'},
+  {code:'SG', name:'Singapore'}, {code:'HK', name:'Hong Kong'}, {code:'NZ', name:'New Zealand'}
+];
 const FAMILY_ADVERTISERS = {
   ECOMM: ['ORBIO','ADTRACTIVE','DFO','ADSBRANDED','PUREHEALTH','HEROCO','COMMERCO'],
   VSL: [],
@@ -275,6 +300,7 @@ let drawerOfferId = null;
 let drawerPlatform = null;
 let loaded = false;
 let fileSha = null;
+let draftGeos = [];
 
 const $ = (sel, el=document) => el.querySelector(sel);
 const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
@@ -289,6 +315,19 @@ function showToast(msg){
   clearTimeout(showToast._h); showToast._h = setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
+function migrateGeoFormat(state){
+  if(state.offers){
+    state.offers.forEach(o=>{
+      if(o.geo && typeof o.geo === 'string'){
+        o.geo = [];
+      }else if(!Array.isArray(o.geo)){
+        o.geo = [];
+      }
+    });
+  }
+  return state;
+}
+
 async function loadState(){
   try{
     const snapshot = await database.ref('state').get();
@@ -297,6 +336,7 @@ async function loadState(){
       // Ensure cells array exists
       if(!state.cells) state.cells = [];
       if(!state.offers) state.offers = [];
+      state = migrateGeoFormat(state);
     } else {
       state = { offers: [], cells: [] };
       await database.ref('state').set(state);
@@ -313,6 +353,7 @@ async function loadState(){
       state = snapshot.val();
       if(!state.cells) state.cells = [];
       if(!state.offers) state.offers = [];
+      state = migrateGeoFormat(state);
       render();
     }
   });
@@ -362,7 +403,8 @@ function filteredOffers(){
   if(adv) offers = offers.filter(o=>o.advertiser===adv);
   if(q){
     offers = offers.filter(o=>{
-      const hay = [o.offerName,o.advertiser,o.geo,o.notes].join(' ').toLowerCase();
+      const geoStr = Array.isArray(o.geo) ? o.geo.join(' ') : (o.geo||'');
+      const hay = [o.offerName,o.advertiser,geoStr,o.notes].join(' ').toLowerCase();
       return hay.includes(q);
     });
   }
@@ -397,12 +439,15 @@ function renderMatrix(){
   </tr></thead><tbody>`;
 
   offers.forEach(o=>{
+    const geoDisplay = (Array.isArray(o.geo) && o.geo.length > 0)
+      ? o.geo.map(code=>COUNTRIES.find(c=>c.code===code)?.name||code).join(', ')
+      : '—';
     html += `<tr>
       <td class="offer-cell" data-offer="${o.id}">
         <div class="offer-name">${escapeHtml(o.offerName)}</div>
         <div class="offer-adv">${escapeHtml(o.advertiser)}</div>
       </td>
-      <td class="geo-cell">${escapeHtml(o.geo||'—')}</td>
+      <td class="geo-cell">${escapeHtml(geoDisplay)}</td>
       ${PLATFORMS.map(p=>{
         const c = cellFor(o.id, p);
         if(!c || c.archived){
@@ -473,10 +518,13 @@ function renderTable(){
 
   tbody.innerHTML = finalRows.map(({o,c,p})=>{
     const st = statusOf(c.status);
+    const geoDisplay = (Array.isArray(o.geo) && o.geo.length > 0)
+      ? o.geo.map(code=>COUNTRIES.find(c=>c.code===code)?.name||code).join(', ')
+      : '—';
     return `<tr data-offer="${o.id}" data-platform="${p}">
       <td style="font-weight:600">${escapeHtml(o.offerName)}</td>
       <td>${escapeHtml(o.advertiser)}</td>
-      <td>${escapeHtml(o.geo||'—')}</td>
+      <td>${escapeHtml(geoDisplay)}</td>
       <td>${p}</td>
       <td>${escapeHtml(c.buyer||'—')}</td>
       <td><span class="status-pill" style="background:${st.color}22; color:${st.color}"><span class="dot" style="background:${st.color}"></span>${st.label}</span></td>
@@ -511,7 +559,19 @@ function openOfferDrawer(offerId){
     </div>
     <div class="field-row">
       <div class="field"><label>Offer name</label><input type="text" id="f-offername" value="${escapeHtml(o?.offerName||'')}" placeholder="e.g. STABLEGRIP"></div>
-      <div class="field"><label>Geo</label><input type="text" id="f-geo" value="${escapeHtml(o?.geo||'')}" placeholder="e.g. Tier1"></div>
+      <div class="field">
+        <label>Geo</label>
+        <div class="country-selector">
+          <div class="country-chips" id="geoChips"></div>
+          <div class="country-picker" id="geoPicker">
+            <div class="country-search">
+              <input type="text" id="geoSearchInput" placeholder="Search countries...">
+            </div>
+            <div id="geoCountries"></div>
+          </div>
+          <button type="button" class="btn btn-ghost" id="geoToggleBtn" style="width:100%; text-align:left;">Select countries...</button>
+        </div>
+      </div>
     </div>
     <div class="field">
       <label>Material (advertorial links)</label>
@@ -564,6 +624,50 @@ function openOfferDrawer(offerId){
   $('#f-material-url').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); $('#addMaterialBtn').click(); } });
   $('#f-material-label').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); $('#addMaterialBtn').click(); } });
 
+  // Country selector setup
+  draftGeos = (o?.geo || []).slice();
+  function renderGeoChips(){
+    const chips = $('#geoChips');
+    chips.innerHTML = draftGeos.map(code=>{
+      const country = COUNTRIES.find(c=>c.code===code);
+      return `<div class="country-chip">${country?.name||code}<span class="remove" data-code="${code}">×</span></div>`;
+    }).join('');
+    $$('.remove', chips).forEach(btn=> btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      draftGeos = draftGeos.filter(c=>c!==btn.dataset.code);
+      renderGeoChips();
+      renderGeoOptions();
+    }));
+  }
+  function renderGeoOptions(search=''){
+    const filtered = COUNTRIES.filter(c=>c.name.toLowerCase().includes(search.toLowerCase()) || c.code.toLowerCase().includes(search.toLowerCase()));
+    $('#geoCountries').innerHTML = filtered.map(c=>`
+      <div class="country-option ${draftGeos.includes(c.code)?'selected':''}" data-code="${c.code}">
+        ${c.code} - ${c.name}
+      </div>
+    `).join('');
+    $$('.country-option', $('#geoCountries')).forEach(opt=> opt.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const code = opt.dataset.code;
+      if(draftGeos.includes(code)){ draftGeos = draftGeos.filter(c=>c!==code); }
+      else{ draftGeos.push(code); }
+      renderGeoChips();
+      renderGeoOptions(search);
+    }));
+  }
+  renderGeoChips();
+  renderGeoOptions();
+  $('#geoToggleBtn').addEventListener('click', (e)=>{
+    e.preventDefault();
+    $('#geoPicker').classList.toggle('open');
+  });
+  $('#geoSearchInput').addEventListener('input', (e)=>{
+    renderGeoOptions(e.target.value);
+  });
+  document.addEventListener('click', (e)=>{
+    if(!e.target.closest('.country-selector')) $('#geoPicker').classList.remove('open');
+  });
+
   $('#closeDrawer').addEventListener('click', closeDrawer);
   $('#cancelBtn').addEventListener('click', closeDrawer);
   if(o) $('#deleteBtn').addEventListener('click', ()=> deleteOffer(o.id));
@@ -579,7 +683,7 @@ async function saveOfferFromDrawer(materials){
   const advertiser = $('#f-advertiser').value.trim();
   const offerName = $('#f-offername').value.trim();
   if(!advertiser || !offerName){ showToast('Advertiser and offer name are required'); return; }
-  const data = { advertiser, offerName, geo: $('#f-geo').value.trim(), notes: $('#f-notes').value.trim(), materials: materials || [] };
+  const data = { advertiser, offerName, geo: draftGeos, notes: $('#f-notes').value.trim(), materials: materials || [] };
 
   if(drawerOfferId){
     const idx = state.offers.findIndex(o=>o.id===drawerOfferId);
@@ -611,10 +715,13 @@ function openCellDrawer(offerId, platform){
   const o = state.offers.find(x=>x.id===offerId);
   const c = cellFor(offerId, platform);
   const drawer = $('#drawer');
+  const geoDisplay = (Array.isArray(o.geo) && o.geo.length > 0)
+    ? o.geo.map(code=>COUNTRIES.find(c=>c.code===code)?.name||code).join(', ')
+    : '—';
 
   drawer.innerHTML = `
     <div class="drawer-head">
-      <div><h2>${platform}</h2><div class="dsub">${escapeHtml(o.offerName)} — ${escapeHtml(o.advertiser)} · ${escapeHtml(o.geo||'—')}</div></div>
+      <div><h2>${platform}</h2><div class="dsub">${escapeHtml(o.offerName)} — ${escapeHtml(o.advertiser)} · ${geoDisplay}</div></div>
       <button class="close-x" id="closeDrawer">&times;</button>
     </div>
     <div class="field"><label>Status</label><div class="status-row" id="statusRow"></div></div>
