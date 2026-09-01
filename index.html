@@ -269,6 +269,9 @@ async function loadState(){
     const snapshot = await database.ref('state').get();
     if(snapshot.exists()){
       state = snapshot.val();
+      // Ensure cells array exists
+      if(!state.cells) state.cells = [];
+      if(!state.offers) state.offers = [];
     } else {
       state = { offers: [], cells: [] };
       await database.ref('state').set(state);
@@ -283,6 +286,8 @@ async function loadState(){
   database.ref('state').on('value', (snapshot) => {
     if(snapshot.exists()){
       state = snapshot.val();
+      if(!state.cells) state.cells = [];
+      if(!state.offers) state.offers = [];
       render();
     }
   });
