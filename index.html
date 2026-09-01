@@ -209,13 +209,25 @@
 <div class="overlay" id="overlay"><div class="drawer" id="drawer"></div></div>
 <div class="toast" id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+
 <script>
-// GitHub configuration
-const GITHUB_OWNER = 'quim-coder';
-const GITHUB_REPO = 'campaign-pipeline';
-const GITHUB_TOKEN = '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';
-const GITHUB_BRANCH = 'main';
-const DATA_FILE = 'data.json';
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyB9UAUE269KIL0du6sDZqx2MbMY2ALlU9A",
+  authDomain: "campaign-pipeline-70854.firebaseapp.com",
+  databaseURL: "https://campaign-pipeline-70854-default-rtdb.firebaseio.com",
+  projectId: "campaign-pipeline-70854",
+  storageBucket: "campaign-pipeline-70854.firebasestorage.app",
+  messagingSenderId: "23053574848",
+  appId: "1:23053574848:web:ae07a2f800abc994672313",
+  measurementId: "G-Z1JNXT9ETH"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
 
 const STATUSES = [
   { key:'to_test', label:'To be tested', color:'var(--st-totest)' },
@@ -254,74 +266,33 @@ function showToast(msg){
 
 async function loadState(){
   try{
-    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_FILE}?ref=${GITHUB_BRANCH}`;
-    const res = await fetch(url, {
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+raw'
-      }
-    });
-    if(res.ok){
-      const data = await res.text();
-      state = JSON.parse(data);
-
-      // Get SHA for future updates
-      const infoRes = await fetch(url, {
-        headers: { 'Authorization': `token ${GITHUB_TOKEN}` }
-      });
-      if(infoRes.ok){
-        const infoData = await infoRes.json();
-        fileSha = infoData.sha;
-      }
+    const snapshot = await database.ref('state').get();
+    if(snapshot.exists()){
+      state = snapshot.val();
     } else {
       state = { offers: [], cells: [] };
+      await database.ref('state').set(state);
     }
   }catch(e){
     console.error('Load error:', e);
     state = { offers: [], cells: [] };
   }
   loaded = true;
+
+  // Listen for real-time updates
+  database.ref('state').on('value', (snapshot) => {
+    if(snapshot.exists()){
+      state = snapshot.val();
+      render();
+    }
+  });
 }
 
 async function saveState(){
   try{
     showToast('Saving...');
-    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_FILE}`;
-    const content = btoa(JSON.stringify(state, null, 2));
-    const message = `Update campaign data - ${new Date().toISOString()}`;
-
-    // Get current SHA if we don't have it
-    if(!fileSha){
-      const getRes = await fetch(url, {
-        headers: { 'Authorization': `token ${GITHUB_TOKEN}` }
-      });
-      if(getRes.ok){
-        const fileData = await getRes.json();
-        fileSha = fileData.sha;
-      }
-    }
-
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message,
-        content,
-        sha: fileSha,
-        branch: GITHUB_BRANCH
-      })
-    });
-
-    if(res.ok){
-      const resData = await res.json();
-      fileSha = resData.content.sha;
-      showToast('Saved to GitHub');
-    } else {
-      showToast('Save failed — check your connection');
-    }
+    await database.ref('state').set(state);
+    showToast('Saved ✓');
   }catch(e){
     console.error('Save error:', e);
     showToast('Save failed — check your connection');
