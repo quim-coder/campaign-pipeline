@@ -103,6 +103,12 @@
   .material-add-row input.label{ flex:1 1 100px; }
   .material-empty{ color: #FFFFFF; font-size:12px; margin-bottom:8px; }
 
+  .actions-cell{ display:flex; gap:6px; align-items:center; }
+  .action-btn{ background:none; border:none; color: #FFFFFF; cursor:pointer; font-size:14px; padding:4px 8px; border-radius:4px; transition:0.2s; }
+  .action-btn:hover{ background: var(--bg-card); }
+  .action-btn.archive{ color: #D9C458; }
+  .action-btn.delete{ color: #C0524A; }
+
   .cell-slot{ width: 100%; height: 40px; border-radius: 6px; cursor:pointer; display:flex; align-items:center; justify-content:center; border: 1px dashed var(--border); color: #FFFFFF; font-size: 16px; }
   .cell-slot:hover{ border-color: #FFFFFF; color: #FFFFFF; }
   .status-cell{ width: 100%; min-height: 40px; border-radius: 6px; cursor:pointer; padding: 6px 8px; display:flex; flex-direction:column; justify-content:center; gap:2px; }
@@ -352,7 +358,7 @@ function filteredOffers(){
   const q = $('#searchInput').value.trim().toLowerCase();
   const adv = $('#filterAdvertiser').value;
   const statusFilter = $('#filterStatus').value;
-  let offers = famOffers(currentFam);
+  let offers = famOffers(currentFam).filter(o=>!o.archived);
   if(adv) offers = offers.filter(o=>o.advertiser===adv);
   if(q){
     offers = offers.filter(o=>{
@@ -387,7 +393,7 @@ function renderMatrix(){
   let html = `<div class="matrix-wrap"><table class="matrix"><thead><tr>
     <th>Offer</th><th>Geo</th>
     ${PLATFORMS.map(p=>`<th class="plat-col">${p}</th>`).join('')}
-    <th>Material</th><th>Notes</th>
+    <th>Material</th><th>Notes</th><th>Actions</th>
   </tr></thead><tbody>`;
 
   offers.forEach(o=>{
@@ -411,6 +417,10 @@ function renderMatrix(){
       }).join('')}
       <td><div class="material-cell ${(o.materials&&o.materials.length)? '' : 'empty'}" data-offer-mat="${o.id}">${(o.materials||[]).map(m=>`<a class="material-chip" href="${escapeHtml(m.url)}" target="_blank" rel="noopener" title="${escapeHtml(m.label||m.url)}" onclick="event.stopPropagation()">${escapeHtml(m.label || m.url.replace(/^https?:\/\//,''))}</a>`).join('')}</div></td>
       <td class="notes-cell ${o.notes? '' : 'empty'}" data-offer-notes="${o.id}">${escapeHtml(o.notes||'')}</td>
+      <td><div class="actions-cell">
+        <button class="action-btn archive" data-archive="${o.id}" title="Archive">📦</button>
+        <button class="action-btn delete" data-delete="${o.id}" title="Delete">🗑️</button>
+      </div></td>
     </tr>`;
   });
 
@@ -419,9 +429,27 @@ function renderMatrix(){
 
   $$('.offer-cell', container).forEach(el=> el.addEventListener('click', ()=> openOfferDrawer(el.dataset.offer)));
   $$('.notes-cell', container).forEach(el=> el.addEventListener('click', ()=> openOfferDrawer(el.dataset.offerNotes)));
+  $$('.material-cell', container).forEach(el=> el.addEventListener('click', ()=> openOfferDrawer(el.dataset.offerMat)));
   $$('.cell-slot, .status-cell', container).forEach(el=>{
     el.addEventListener('click', ()=> openCellDrawer(el.dataset.offer, el.dataset.platform));
   });
+  $$('[data-archive]', container).forEach(btn=> btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const offerId = btn.dataset.archive;
+    const offer = state.offers.find(o=>o.id===offerId);
+    if(offer){
+      offer.archived = !offer.archived;
+      saveState();
+      render();
+      showToast(offer.archived ? 'Offer archived' : 'Offer unarchived');
+    }
+  }));
+  $$('[data-delete]', container).forEach(btn=> btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    if(confirm('Delete this offer and all its tests?')){
+      deleteOffer(btn.dataset.delete);
+    }
+  }));
 }
 
 function renderTable(){
