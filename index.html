@@ -742,30 +742,52 @@ function renderOfferHistory(offerId){
   const history = (state.history || []).filter(h => h.details?.offerId === offerId).slice().reverse();
 
   if(history.length === 0){
-    histDiv.innerHTML = '<div style="color:var(--text-faint); padding:8px;">No changes yet</div>';
+    histDiv.innerHTML = '<div style="color:var(--text-faint); padding:8px; font-size:11px;">📋 No changes yet</div>';
     return;
   }
 
   histDiv.innerHTML = history.map(h=>{
     const dt = new Date(h.timestamp);
     const timeStr = dt.toLocaleString('en-GB', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
-    let details = h.action;
+    const user = escapeHtml(h.user || 'Unknown');
+    let icon = '✏️';
+    let action = '';
+    let desc = '';
 
-    if(h.action === 'Offer updated' && h.details?.changes){
-      details = `<strong>Updated:</strong> ${escapeHtml(h.details.changes)}`;
+    if(h.action === 'Offer updated'){
+      icon = '✏️';
+      action = 'UPDATED';
+      if(h.details?.changes){
+        desc = h.details.changes.split('; ').map(c => '  • ' + c).join('\n');
+      }
     } else if(h.action === 'Offer created'){
-      details = `<strong>Created</strong> as new offer`;
+      icon = '✨';
+      action = 'CREATED';
+      desc = `  • Advertiser: ${h.details?.advertiser || '—'}\n  • Name: ${h.details?.offerName || '—'}`;
     } else if(h.action === 'Offer deleted'){
-      details = `<strong>Deleted</strong>`;
+      icon = '🗑️';
+      action = 'DELETED';
+      desc = `  • Name: ${h.details?.offerName || '—'}`;
     } else if(h.action === 'Offer archived (bulk)'){
-      details = `<strong>Archived</strong> (bulk)`;
+      icon = '📦';
+      action = 'ARCHIVED (bulk)';
     } else if(h.action === 'Offer duplicated'){
-      details = `<strong>Duplicated</strong> from another offer`;
+      icon = '📋';
+      action = 'DUPLICATED';
+      desc = `  • Copy name: ${h.details?.offerName || '—'}`;
+    } else {
+      icon = '•';
+      action = h.action;
     }
 
-    return `<div style="padding:8px 0; border-bottom:1px solid var(--border-soft); font-size:10.5px;">
-      <div style="color:var(--text-faint); margin-bottom:2px;">${escapeHtml(timeStr)} · ${escapeHtml(h.user || 'Unknown')}</div>
-      <div style="color:var(--text); line-height:1.4;">${details}</div>
+    const timeSection = `<div style="font-size:10px; color:var(--text-faint); margin-bottom:3px;">${timeStr} by ${user}</div>`;
+    const actionSection = `<div style="font-weight:500; font-size:11.5px; color:var(--text);">${icon} ${action}</div>`;
+    const descSection = desc ? `<div style="font-size:10px; color:var(--text-faint); margin-top:2px; font-family:var(--font-mono); white-space:pre-wrap;">${escapeHtml(desc)}</div>` : '';
+
+    return `<div style="padding:10px; margin-bottom:8px; background:var(--bg-card); border-radius:4px; border-left:2px solid var(--border);">
+      ${timeSection}
+      ${actionSection}
+      ${descSection}
     </div>`;
   }).join('');
 }
