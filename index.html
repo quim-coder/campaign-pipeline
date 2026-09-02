@@ -203,6 +203,7 @@
       <div class="fam-label">View</div>
       <button class="nav-btn active" data-view="matrix">Matrix</button>
       <button class="nav-btn" data-view="table">List / Tracker</button>
+      <button class="nav-btn" data-view="history">History</button>
     </div>
 
     <div class="rail-footer">
@@ -219,7 +220,10 @@
         <h1 id="viewTitle">ECOMM — Matrix</h1>
         <div class="sub" id="viewSub">Click an empty cell to assign a test on that platform.</div>
       </div>
-      <button class="btn btn-primary" id="addBtn">+ New offer</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost" id="exportBtn" title="Export to CSV">📥 Export CSV</button>
+        <button class="btn btn-primary" id="addBtn">+ New offer</button>
+      </div>
     </div>
 
     <div class="content">
@@ -247,6 +251,14 @@
             <tr><th>Offer</th><th>Advertiser</th><th>Geo</th><th>Platform</th><th>Buyer</th><th>Status</th><th>Started</th><th>Paused</th><th>Results</th></tr>
           </thead>
           <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <div id="historyView" style="display:none;">
+        <table class="tracker">
+          <thead>
+            <tr><th>Timestamp</th><th>User</th><th>Action</th><th>Details</th></tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
         </table>
       </div>
     </div>
@@ -306,7 +318,7 @@ const FAMILY_ADVERTISERS = {
   POTENTIALS_LEADGEN: []
 };
 
-let state = { offers: [], cells: [] };
+let state = { offers: [], cells: [], history: [], savedSearches: [] };
 let currentFam = 'ECOMM';
 let currentView = 'matrix';
 let drawerMode = null;
@@ -315,6 +327,8 @@ let drawerPlatform = null;
 let loaded = false;
 let fileSha = null;
 let draftGeos = [];
+let selectedOffers = new Set();
+let currentSearch = { advertiser: '', status: '', query: '', pinnedId: null };
 
 const $ = (sel, el=document) => el.querySelector(sel);
 const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
@@ -340,6 +354,42 @@ function migrateGeoFormat(state){
     });
   }
   return state;
+}
+
+function logHistory(action, details){
+  if(!state.history) state.history = [];
+  state.history.push({
+    id: uid(),
+    timestamp: new Date().toISOString(),
+    action,
+    details,
+    user: getViewerName()
+  });
+}
+
+function exportToCSV(){
+  const offers = filteredOffers();
+  if(offers.length === 0){ showToast('No offers to export'); return; }
+
+  const headers = ['Offer Name', 'Advertiser', 'Geo', 'Material Links', 'Notes', 'Family'];
+  const rows = offers.map(o => [
+    o.offerName,
+    o.advertiser,
+    Array.isArray(o.geo) ? o.geo.join(';') : o.geo || '',
+    (o.materials||[]).map(m=>m.url).join(';'),
+    o.notes,
+    o.family
+  ]);
+
+  const csv = [headers, ...rows].map(r=>r.map(v=>`"${(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `offers-${currentFam}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exported');
 }
 
 async function loadState(){
@@ -435,7 +485,9 @@ function render(){
   renderLegend();
   updateCounts();
   populateFilters();
-  if(currentView === 'matrix') renderMatrix(); else renderTable();
+  if(currentView === 'matrix') renderMatrix();
+  else if(currentView === 'table') renderTable();
+  else if(currentView === 'history') renderHistory();
 }
 
 function renderMatrix(){
@@ -588,6 +640,25 @@ function renderTable(){
   $$('tr[data-offer]', tbody).forEach(row=>{
     row.addEventListener('click', ()=> openCellDrawer(row.dataset.offer, row.dataset.platform));
   });
+}
+
+function renderHistory(){
+  const tbody = $('#historyBody');
+  if(!loaded){ tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Loading…</td></tr>'; return; }
+
+  const history = (state.history || []).slice().reverse();
+  if(history.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No history yet.</td></tr>'; return; }
+
+  tbody.innerHTML = history.map(h=>{
+    const dt = new Date(h.timestamp);
+    const timeStr = dt.toLocaleString('en-GB', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+    return `<tr>
+      <td class="num">${escapeHtml(timeStr)}</td>
+      <td>${escapeHtml(h.user || '—')}</td>
+      <td style="font-weight:500">${escapeHtml(h.action)}</td>
+      <td>${escapeHtml(JSON.stringify(h.details).substring(0,100))}</td>
+    </tr>`;
+  }).join('');
 }
 
 /* ---------- offer drawer ---------- */
@@ -882,12 +953,16 @@ $$('[data-view]').forEach(btn=>{
     currentView = btn.dataset.view;
     $('#matrixView').style.display = currentView==='matrix' ? '' : 'none';
     $('#tableView').style.display = currentView==='table' ? '' : 'none';
-    $('#viewTitle').textContent = `${currentFam} — ${currentView==='matrix'?'Matrix':'List / Tracker'}`;
-    $('#viewSub').textContent = currentView==='matrix' ? 'Click an empty cell to assign a test on that platform.' : 'Every platform test, filterable and sortable.';
+    $('#historyView').style.display = currentView==='history' ? '' : 'none';
+    const displayFam = currentFam.replace('_', ' ');
+    const viewLabel = currentView==='matrix'?'Matrix':currentView==='table'?'List / Tracker':'History';
+    $('#viewTitle').textContent = `${displayFam} — ${viewLabel}`;
+    $('#viewSub').textContent = currentView==='matrix' ? 'Click an empty cell to assign a test on that platform.' : currentView==='table' ? 'Every platform test, filterable and sortable.' : 'Activity log of all changes.';
     render();
   });
 });
 $('#addBtn').addEventListener('click', ()=> openOfferDrawer(null));
+$('#exportBtn').addEventListener('click', exportToCSV);
 $('#overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') closeDrawer(); });
 $('#searchInput').addEventListener('input', render);
 $('#filterAdvertiser').addEventListener('change', render);
