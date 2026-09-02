@@ -240,6 +240,12 @@
           <option value="pending">Pending</option>
           <option value="rejected">Rejected</option>
         </select>
+        <button class="btn btn-ghost" id="pinSearchBtn" title="Save this search" style="font-size:16px;">📌</button>
+      </div>
+      <div id="pinnedSearchDisplay" style="display:none; background:var(--bg-card); border:1px solid var(--border-soft); padding:8px 12px; border-radius:6px; font-size:12px; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+        <span>📌 Active search:</span>
+        <span id="pinnedSearchText" style="color:var(--text-faint); flex:1;"></span>
+        <button class="btn btn-ghost" id="clearPinnedBtn" style="padding:4px 8px; font-size:11px;">Clear</button>
       </div>
 
       <div class="legend" id="legend"></div>
@@ -491,6 +497,7 @@ function render(){
   renderLegend();
   updateCounts();
   populateFilters();
+  displayPinnedSearch();
   if(currentView === 'matrix') renderMatrix();
   else if(currentView === 'table') renderTable();
   else if(currentView === 'history') renderHistory();
@@ -661,6 +668,54 @@ function updateBulkBar(){
     bulkBar.style.display = 'none';
     selectedOffers.clear();
   }
+}
+
+function pinCurrentSearch(){
+  const query = $('#searchInput').value;
+  const advertiser = $('#filterAdvertiser').value;
+  const status = $('#filterStatus').value;
+
+  if(!query && !advertiser && !status){
+    showToast('No search criteria to save');
+    return;
+  }
+
+  const searchObj = { query, advertiser, status, timestamp: new Date().toISOString() };
+  if(!state.savedSearches) state.savedSearches = [];
+  state.savedSearches = [searchObj];
+  saveState();
+  showToast('Search saved ✓');
+  displayPinnedSearch();
+}
+
+function displayPinnedSearch(){
+  if(!state.savedSearches || state.savedSearches.length === 0){
+    $('#pinnedSearchDisplay').style.display = 'none';
+    return;
+  }
+
+  const search = state.savedSearches[0];
+  const parts = [];
+  if(search.query) parts.push(`Query: "${search.query}"`);
+  if(search.advertiser) parts.push(`Advertiser: ${search.advertiser}`);
+  if(search.status) {
+    const st = STATUSES.find(s=>s.key===search.status);
+    parts.push(`Status: ${st?.label || search.status}`);
+  }
+
+  $('#pinnedSearchText').textContent = parts.length > 0 ? parts.join(' · ') : 'No criteria';
+  $('#pinnedSearchDisplay').style.display = 'flex';
+}
+
+function loadPinnedSearch(){
+  if(!state.savedSearches || state.savedSearches.length === 0) return;
+
+  const search = state.savedSearches[0];
+  $('#searchInput').value = search.query || '';
+  $('#filterAdvertiser').value = search.advertiser || '';
+  $('#filterStatus').value = search.status || '';
+  render();
+  showToast('Search loaded');
 }
 
 function renderHistory(){
@@ -1079,6 +1134,14 @@ $('#bulkCancelBtn').addEventListener('click', ()=>{
   updateBulkBar();
 });
 
+$('#pinSearchBtn').addEventListener('click', pinCurrentSearch);
+$('#clearPinnedBtn').addEventListener('click', ()=>{
+  state.savedSearches = [];
+  saveState();
+  displayPinnedSearch();
+  showToast('Saved search cleared');
+});
+
 $('#overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') closeDrawer(); });
 $('#searchInput').addEventListener('input', render);
 $('#filterAdvertiser').addEventListener('change', render);
@@ -1086,6 +1149,7 @@ $('#filterStatus').addEventListener('change', render);
 
 (async function init(){
   await loadState();
+  loadPinnedSearch();
   render();
 })();
 </script>
