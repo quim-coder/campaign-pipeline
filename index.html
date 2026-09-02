@@ -870,7 +870,8 @@ $$('[data-fam]').forEach(btn=>{
     $$('[data-fam]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     currentFam = btn.dataset.fam;
-    $('#viewTitle').textContent = `${currentFam} — ${currentView==='matrix'?'Matrix':'List / Tracker'}`;
+    const displayFam = currentFam.replace('_', ' ');
+    $('#viewTitle').textContent = `${displayFam} — ${currentView==='matrix'?'Matrix':'List / Tracker'}`;
     render();
   });
 });
