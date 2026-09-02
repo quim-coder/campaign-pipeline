@@ -190,6 +190,7 @@
       <button class="nav-btn active" data-fam="ECOMM">ECOMM <span class="count" id="cnt-ECOMM">0</span></button>
       <button class="nav-btn" data-fam="VSL">VSL <span class="count" id="cnt-VSL">0</span></button>
       <button class="nav-btn" data-fam="LEADGEN">LEADGEN <span class="count" id="cnt-LEADGEN">0</span></button>
+      <button class="nav-btn" data-fam="POTENTIALS">POTENTIALS <span class="count" id="cnt-POTENTIALS">0</span></button>
     </div>
 
     <div class="fam-group">
@@ -273,6 +274,8 @@ const STATUSES = [
   { key:'paused',  label:'Paused', color:'var(--st-paused)' },
   { key:'retesting', label:'Retesting', color:'var(--st-retest)' },
   { key:'killed',  label:'Killed', color:'var(--st-killed)' },
+  { key:'pending', label:'Pending', color:'#9AA1A8' },
+  { key:'rejected', label:'Rejected', color:'#7C3A3A' },
 ];
 const PLATFORMS = ['OUTBRAIN','MEDIAGO','TABOOLA','MGID','ADSKEEPER','NEWSBREAK'];
 const COUNTRIES = [
@@ -289,7 +292,8 @@ const COUNTRIES = [
 const FAMILY_ADVERTISERS = {
   ECOMM: ['ORBIO','ADTRACTIVE','DFO','ADSBRANDED','PUREHEALTH','HEROCO','COMMERCO'],
   VSL: [],
-  LEADGEN: []
+  LEADGEN: [],
+  POTENTIALS: ['ORBIO','ADTRACTIVE','DFO','ADSBRANDED','PUREHEALTH','HEROCO','COMMERCO']
 };
 
 let state = { offers: [], cells: [] };
@@ -385,6 +389,7 @@ function updateCounts(){
   $('#cnt-ECOMM').textContent = famOffers('ECOMM').length;
   $('#cnt-VSL').textContent = famOffers('VSL').length;
   $('#cnt-LEADGEN').textContent = famOffers('LEADGEN').length;
+  $('#cnt-POTENTIALS').textContent = famOffers('POTENTIALS').length;
 }
 
 function populateFilters(){
@@ -432,50 +437,75 @@ function renderMatrix(){
     return;
   }
 
-  const platformLogos = {
-    OUTBRAIN: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#FF6600"/></svg>',
-    MEDIAGO: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#2E5BFF"/></svg>',
-    TABOOLA: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#003366"/></svg>',
-    MGID: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#0052CC"/></svg>',
-    ADSKEEPER: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1a1a1a"/></svg>',
-    NEWSBREAK: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#FF3333"/></svg>'
-  };
+  const isPotentials = currentFam === 'POTENTIALS';
+  let html = '';
 
-  let html = `<div class="matrix-wrap"><table class="matrix"><thead><tr>
-    <th>Offer</th><th>Geo</th>
-    ${PLATFORMS.map(p=>`<th class="plat-col"><div style="width:14px;height:14px;margin:0 auto 3px;">${platformLogos[p]}</div><div style="font-size:7px;text-transform:uppercase;font-weight:500;letter-spacing:0.3px;">${p}</div></th>`).join('')}
-    <th>Material</th><th>Notes</th><th>Actions</th>
-  </tr></thead><tbody>`;
+  if(isPotentials){
+    html = `<div class="matrix-wrap"><table class="matrix"><thead><tr>
+      <th>Offer</th><th>Advertiser</th><th>Geo</th><th>Material</th><th>Notes</th><th>Actions</th>
+    </tr></thead><tbody>`;
+  } else {
+    const platformLogos = {
+      OUTBRAIN: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#FF6600"/></svg>',
+      MEDIAGO: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#2E5BFF"/></svg>',
+      TABOOLA: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#003366"/></svg>',
+      MGID: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#0052CC"/></svg>',
+      ADSKEEPER: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1a1a1a"/></svg>',
+      NEWSBREAK: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#FF3333"/></svg>'
+    };
+    html = `<div class="matrix-wrap"><table class="matrix"><thead><tr>
+      <th>Offer</th><th>Geo</th>
+      ${PLATFORMS.map(p=>`<th class="plat-col"><div style="width:14px;height:14px;margin:0 auto 3px;">${platformLogos[p]}</div><div style="font-size:7px;text-transform:uppercase;font-weight:500;letter-spacing:0.3px;">${p}</div></th>`).join('')}
+      <th>Material</th><th>Notes</th><th>Actions</th>
+    </tr></thead><tbody>`;
+  }
 
   offers.forEach(o=>{
     const geoDisplay = (Array.isArray(o.geo) && o.geo.length > 0)
       ? o.geo.map(code=>COUNTRIES.find(c=>c.code===code)?.name||code).join(', ')
       : '—';
-    html += `<tr>
-      <td class="offer-cell" data-offer="${o.id}">
-        <div class="offer-name">${escapeHtml(o.offerName)}</div>
-        <div class="offer-adv">${escapeHtml(o.advertiser)}</div>
-      </td>
-      <td class="geo-cell">${escapeHtml(geoDisplay)}</td>
-      ${PLATFORMS.map(p=>{
-        const c = cellFor(o.id, p);
-        if(!c || c.archived){
-          return `<td><div class="cell-slot" data-offer="${o.id}" data-platform="${p}">+</div></td>`;
-        }
-        const st = statusOf(c.status);
-        const sub = c.status==='paused' ? (c.pauseReason || fmtDate(c.pausedAt)) : (c.buyer || fmtDate(c.startedAt));
-        return `<td><div class="status-cell" data-offer="${o.id}" data-platform="${p}" style="background:${st.color}22;">
-          <span class="st-label" style="color:${st.color}">${st.label}</span>
-          <span class="st-sub" style="color:var(--text-faint)">${escapeHtml(sub||'')}</span>
-        </div></td>`;
-      }).join('')}
-      <td><div class="material-cell ${(o.materials&&o.materials.length)? '' : 'empty'}" data-offer-mat="${o.id}">${(o.materials||[]).map(m=>`<a class="material-chip" href="${escapeHtml(m.url)}" target="_blank" rel="noopener" title="${escapeHtml(m.label||m.url)}" onclick="event.stopPropagation()">${escapeHtml(m.label || m.url.replace(/^https?:\/\//,''))}</a>`).join('')}</div></td>
-      <td class="notes-cell ${o.notes? '' : 'empty'}" data-offer-notes="${o.id}">${escapeHtml(o.notes||'')}</td>
-      <td><div class="actions-cell">
-        <button class="action-btn archive" data-archive="${o.id}" title="Archive">📦</button>
-        <button class="action-btn delete" data-delete="${o.id}" title="Delete">🗑️</button>
-      </div></td>
-    </tr>`;
+
+    if(isPotentials){
+      html += `<tr>
+        <td class="offer-cell" data-offer="${o.id}">
+          <div class="offer-name">${escapeHtml(o.offerName)}</div>
+        </td>
+        <td>${escapeHtml(o.advertiser||'—')}</td>
+        <td class="geo-cell">${escapeHtml(geoDisplay)}</td>
+        <td><div class="material-cell ${(o.materials&&o.materials.length)? '' : 'empty'}" data-offer-mat="${o.id}">${(o.materials||[]).map(m=>`<a class="material-chip" href="${escapeHtml(m.url)}" target="_blank" rel="noopener" title="${escapeHtml(m.label||m.url)}" onclick="event.stopPropagation()">${escapeHtml(m.label || m.url.replace(/^https?:\/\//,''))}</a>`).join('')}</div></td>
+        <td class="notes-cell ${o.notes? '' : 'empty'}" data-offer-notes="${o.id}">${escapeHtml(o.notes||'')}</td>
+        <td><div class="actions-cell">
+          <button class="action-btn archive" data-archive="${o.id}" title="Archive">📦</button>
+          <button class="action-btn delete" data-delete="${o.id}" title="Delete">🗑️</button>
+        </div></td>
+      </tr>`;
+    } else {
+      html += `<tr>
+        <td class="offer-cell" data-offer="${o.id}">
+          <div class="offer-name">${escapeHtml(o.offerName)}</div>
+          <div class="offer-adv">${escapeHtml(o.advertiser)}</div>
+        </td>
+        <td class="geo-cell">${escapeHtml(geoDisplay)}</td>
+        ${PLATFORMS.map(p=>{
+          const c = cellFor(o.id, p);
+          if(!c || c.archived){
+            return `<td><div class="cell-slot" data-offer="${o.id}" data-platform="${p}">+</div></td>`;
+          }
+          const st = statusOf(c.status);
+          const sub = c.status==='paused' ? (c.pauseReason || fmtDate(c.pausedAt)) : (c.buyer || fmtDate(c.startedAt));
+          return `<td><div class="status-cell" data-offer="${o.id}" data-platform="${p}" style="background:${st.color}22;">
+            <span class="st-label" style="color:${st.color}">${st.label}</span>
+            <span class="st-sub" style="color:var(--text-faint)">${escapeHtml(sub||'')}</span>
+          </div></td>`;
+        }).join('')}
+        <td><div class="material-cell ${(o.materials&&o.materials.length)? '' : 'empty'}" data-offer-mat="${o.id}">${(o.materials||[]).map(m=>`<a class="material-chip" href="${escapeHtml(m.url)}" target="_blank" rel="noopener" title="${escapeHtml(m.label||m.url)}" onclick="event.stopPropagation()">${escapeHtml(m.label || m.url.replace(/^https?:\/\//,''))}</a>`).join('')}</div></td>
+        <td class="notes-cell ${o.notes? '' : 'empty'}" data-offer-notes="${o.id}">${escapeHtml(o.notes||'')}</td>
+        <td><div class="actions-cell">
+          <button class="action-btn archive" data-archive="${o.id}" title="Archive">📦</button>
+          <button class="action-btn delete" data-delete="${o.id}" title="Delete">🗑️</button>
+        </div></td>
+      </tr>`;
+    }
   });
 
   html += '</tbody></table></div>';
