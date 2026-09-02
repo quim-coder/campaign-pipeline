@@ -246,9 +246,15 @@
 
       <div id="matrixView"></div>
       <div id="tableView" style="display:none;">
+        <div id="bulkActionsBar" style="display:none; background: var(--bg-card); border:1px solid var(--border); padding:12px 16px; border-radius:6px; margin-bottom:12px; display:flex; align-items:center; gap:12px;">
+          <span id="selectionCount" style="font-size:13px; color:var(--text-faint);"></span>
+          <button class="btn btn-ghost" id="bulkArchiveBtn">📦 Archive</button>
+          <button class="btn btn-danger" id="bulkDeleteBtn">🗑️ Delete</button>
+          <button class="btn btn-ghost" id="bulkCancelBtn">Clear</button>
+        </div>
         <table class="tracker">
           <thead>
-            <tr><th>Offer</th><th>Advertiser</th><th>Geo</th><th>Platform</th><th>Buyer</th><th>Status</th><th>Started</th><th>Paused</th><th>Results</th></tr>
+            <tr><th style="width:24px;"><input type="checkbox" id="selectAllChk" style="cursor:pointer;"></th><th>Offer</th><th>Advertiser</th><th>Geo</th><th>Platform</th><th>Buyer</th><th>Status</th><th>Started</th><th>Paused</th><th>Results</th></tr>
           </thead>
           <tbody id="tableBody"></tbody>
         </table>
@@ -602,44 +608,59 @@ function renderMatrix(){
 
 function renderTable(){
   const tbody = $('#tableBody');
-  if(!loaded){ tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Loading…</td></tr>'; return; }
+  const bulkBar = $('#bulkActionsBar');
+  if(!loaded){ tbody.innerHTML = '<tr class="empty-row"><td colspan="10">Loading…</td></tr>'; return; }
 
   const offers = filteredOffers();
-  const rows = [];
-  offers.forEach(o=>{
-    PLATFORMS.forEach(p=>{
-      const c = cellFor(o.id, p);
-      if(c && !c.archived) rows.push({o,c,p});
-    });
-  });
-  const statusFilter = $('#filterStatus').value;
-  const finalRows = statusFilter ? rows.filter(r=>r.c.status===statusFilter) : rows;
+  if(offers.length===0){
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="10">No offers match these filters yet.</td></tr>';
+    bulkBar.style.display = 'none';
+    return;
+  }
 
-  if(finalRows.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No tests match these filters yet.</td></tr>'; return; }
-
-  finalRows.sort((a,b)=> (b.c.updatedAt||'').localeCompare(a.c.updatedAt||''));
-
-  tbody.innerHTML = finalRows.map(({o,c,p})=>{
-    const st = statusOf(c.status);
+  tbody.innerHTML = offers.map(o=>{
     const geoDisplay = (Array.isArray(o.geo) && o.geo.length > 0)
       ? o.geo.map(code=>COUNTRIES.find(c=>c.code===code)?.name||code).join(', ')
       : '—';
-    return `<tr data-offer="${o.id}" data-platform="${p}">
+    return `<tr data-offer-id="${o.id}" style="cursor:pointer;">
+      <td style="text-align:center;"><input type="checkbox" class="offer-chk" data-offer="${o.id}" style="cursor:pointer;"></td>
       <td style="font-weight:600">${escapeHtml(o.offerName)}</td>
       <td>${escapeHtml(o.advertiser)}</td>
       <td>${escapeHtml(geoDisplay)}</td>
-      <td>${p}</td>
-      <td>${escapeHtml(c.buyer||'—')}</td>
-      <td><span class="status-pill" style="background:${st.color}22; color:${st.color}"><span class="dot" style="background:${st.color}"></span>${st.label}</span></td>
-      <td class="num">${fmtDate(c.startedAt)}</td>
-      <td class="num">${c.pausedAt ? fmtDate(c.pausedAt) + (c.pauseReason ? ' — '+escapeHtml(c.pauseReason) : '') : '—'}</td>
-      <td>${escapeHtml(c.results||'—')}</td>
+      <td colspan="6">—</td>
     </tr>`;
   }).join('');
 
-  $$('tr[data-offer]', tbody).forEach(row=>{
-    row.addEventListener('click', ()=> openCellDrawer(row.dataset.offer, row.dataset.platform));
+  $$('input.offer-chk', tbody).forEach(chk=>{
+    chk.addEventListener('change', updateBulkBar);
+    chk.addEventListener('click', e => e.stopPropagation());
   });
+
+  $$('tr[data-offer-id]', tbody).forEach(row=>{
+    const offerId = row.dataset.offerId;
+    row.addEventListener('click', ()=> openOfferDrawer(offerId));
+  });
+
+  $('#selectAllChk').addEventListener('change', function(){
+    $$('input.offer-chk').forEach(chk => chk.checked = this.checked);
+    updateBulkBar();
+  });
+
+  updateBulkBar();
+}
+
+function updateBulkBar(){
+  const selected = Array.from($$('input.offer-chk:checked')).length;
+  const bulkBar = $('#bulkActionsBar');
+  const selCount = $('#selectionCount');
+
+  if(selected > 0){
+    bulkBar.style.display = 'flex';
+    selCount.textContent = `${selected} offer${selected!==1?'s':''} selected`;
+  } else {
+    bulkBar.style.display = 'none';
+    selectedOffers.clear();
+  }
 }
 
 function renderHistory(){
@@ -1028,6 +1049,36 @@ $$('[data-view]').forEach(btn=>{
 });
 $('#addBtn').addEventListener('click', ()=> openOfferDrawer(null));
 $('#exportBtn').addEventListener('click', exportToCSV);
+
+$('#bulkArchiveBtn').addEventListener('click', ()=>{
+  const selected = Array.from($$('input.offer-chk:checked')).map(chk => chk.dataset.offer);
+  selected.forEach(offerId => {
+    const offer = state.offers.find(o=>o.id===offerId);
+    if(offer){
+      offer.archived = true;
+      logHistory('Offer archived (bulk)', { offerId, offerName: offer.offerName });
+    }
+  });
+  if(selected.length > 0){
+    saveState();
+    showToast(`${selected.length} offer${selected.length!==1?'s':''} archived`);
+  }
+});
+
+$('#bulkDeleteBtn').addEventListener('click', ()=>{
+  const selected = Array.from($$('input.offer-chk:checked')).map(chk => chk.dataset.offer);
+  if(!confirm(`Delete ${selected.length} offer${selected.length!==1?'s':''} and all their tests?`)) return;
+  selected.forEach(offerId => deleteOffer(offerId));
+  showToast(`${selected.length} offer${selected.length!==1?'s':''} deleted`);
+});
+
+$('#bulkCancelBtn').addEventListener('click', ()=>{
+  selectedOffers.clear();
+  $$('input.offer-chk').forEach(chk => chk.checked = false);
+  $('#selectAllChk').checked = false;
+  updateBulkBar();
+});
+
 $('#overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') closeDrawer(); });
 $('#searchInput').addEventListener('input', render);
 $('#filterAdvertiser').addEventListener('change', render);
