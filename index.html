@@ -661,6 +661,25 @@ function renderHistory(){
   }).join('');
 }
 
+function renderOfferHistory(offerId){
+  const histDiv = $('#offerHistory');
+  const history = (state.history || []).filter(h => h.details?.offerId === offerId || h.details?.offerId === offerId).slice().reverse();
+
+  if(history.length === 0){
+    histDiv.innerHTML = '<div style="color:var(--text-faint); padding:8px;">No changes yet</div>';
+    return;
+  }
+
+  histDiv.innerHTML = history.map(h=>{
+    const dt = new Date(h.timestamp);
+    const timeStr = dt.toLocaleString('en-GB', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+    return `<div style="padding:6px 0; border-bottom:1px solid var(--border-soft); font-size:11px;">
+      <div style="color:var(--text-faint);">${escapeHtml(timeStr)} by ${escapeHtml(h.user || 'Unknown')}</div>
+      <div style="color:var(--text); margin-top:2px;">${escapeHtml(h.action)}</div>
+    </div>`;
+  }).join('');
+}
+
 /* ---------- offer drawer ---------- */
 function openOfferDrawer(offerId){
   drawerMode = 'offer';
@@ -711,6 +730,11 @@ function openOfferDrawer(offerId){
       <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
       <button class="btn btn-primary" id="saveBtn">${o ? 'Save changes' : 'Add offer'}</button>
     </div>
+    ${o ? `<div style="margin-top:20px; border-top:1px solid var(--border); padding-top:16px;">
+      <button class="btn btn-ghost" style="width:100%; text-align:left; justify-content:space-between;" id="historyToggle">📋 Change History <span id="historyArrow">▼</span></button>
+      <div id="offerHistory" style="display:none; margin-top:8px; font-size:12px; max-height:200px; overflow-y:auto;">
+      </div>
+    </div>` : ''}
     ${o ? '<button class="danger-link" id="deleteBtn">Remove offer (and all its tests)</button>' : ''}
   `;
 
@@ -792,7 +816,16 @@ function openOfferDrawer(offerId){
 
   $('#closeDrawer').addEventListener('click', closeDrawer);
   $('#cancelBtn').addEventListener('click', closeDrawer);
-  if(o) $('#deleteBtn').addEventListener('click', ()=> deleteOffer(o.id));
+  if(o) {
+    $('#deleteBtn').addEventListener('click', ()=> deleteOffer(o.id));
+    $('#historyToggle').addEventListener('click', ()=>{
+      const histDiv = $('#offerHistory');
+      const isOpen = histDiv.style.display !== 'none';
+      histDiv.style.display = isOpen ? 'none' : 'block';
+      $('#historyArrow').textContent = isOpen ? '▼' : '▲';
+      if(!isOpen) renderOfferHistory(o.id);
+    });
+  }
   $('#saveBtn').addEventListener('click', ()=>{
     const pendingUrl = $('#f-material-url').value.trim();
     if(pendingUrl){ $('#addMaterialBtn').click(); }
@@ -810,9 +843,12 @@ async function saveOfferFromDrawer(materials){
   if(drawerOfferId){
     const idx = state.offers.findIndex(o=>o.id===drawerOfferId);
     if(idx>-1) state.offers[idx] = { ...state.offers[idx], ...data };
+    logHistory('Offer updated', { offerId: drawerOfferId, offerName, advertiser });
     showToast('Offer updated');
   }else{
-    state.offers.push({ id: uid(), family: currentFam, materials: [], createdAt: new Date().toISOString(), createdBy: getViewerName(), ...data });
+    const newId = uid();
+    state.offers.push({ id: newId, family: currentFam, materials: [], createdAt: new Date().toISOString(), createdBy: getViewerName(), ...data });
+    logHistory('Offer created', { offerId: newId, offerName, advertiser });
     showToast('Offer added');
   }
   await saveState();
@@ -821,8 +857,10 @@ async function saveOfferFromDrawer(materials){
 }
 
 async function deleteOffer(id){
+  const offer = state.offers.find(o=>o.id===id);
   state.offers = state.offers.filter(o=>o.id!==id);
   state.cells = state.cells.filter(c=>c.offerId!==id);
+  logHistory('Offer deleted', { offerId: id, offerName: offer?.offerName });
   await saveState();
   closeDrawer();
   render();
@@ -904,9 +942,11 @@ async function saveCellFromDrawer(status){
   if(existing){
     const idx = state.cells.findIndex(c=>c.id===existing.id);
     state.cells[idx] = { ...state.cells[idx], ...data };
+    logHistory('Test updated', { offerId: drawerOfferId, platform: drawerPlatform, status });
     showToast('Test updated');
   }else{
     state.cells.push({ id: uid(), createdAt: new Date().toISOString(), createdBy: getViewerName(), ...data });
+    logHistory('Test assigned', { offerId: drawerOfferId, platform: drawerPlatform, status });
     showToast('Test assigned');
   }
   await saveState();
@@ -915,7 +955,9 @@ async function saveCellFromDrawer(status){
 }
 
 async function deleteCell(id){
+  const cell = state.cells.find(c=>c.id===id);
   state.cells = state.cells.filter(c=>c.id!==id);
+  logHistory('Test deleted', { offerId: cell?.offerId, platform: cell?.platform });
   await saveState();
   closeDrawer();
   render();
@@ -925,11 +967,14 @@ async function deleteCell(id){
 async function archiveCell(id){
   const idx = state.cells.findIndex(c=>c.id===id);
   if(idx>-1){
-    state.cells[idx].archived = !state.cells[idx].archived;
+    const cell = state.cells[idx];
+    const newState = !cell.archived;
+    cell.archived = newState;
+    logHistory(newState ? 'Test archived' : 'Test unarchived', { offerId: cell.offerId, platform: cell.platform });
     await saveState();
     closeDrawer();
     render();
-    showToast(state.cells[idx].archived ? 'Test archived' : 'Test unarchived');
+    showToast(newState ? 'Test archived' : 'Test unarchived');
   }
 }
 
