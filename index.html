@@ -739,7 +739,7 @@ function renderHistory(){
 
 function renderOfferHistory(offerId){
   const histDiv = $('#offerHistory');
-  const history = (state.history || []).filter(h => h.details?.offerId === offerId || h.details?.offerId === offerId).slice().reverse();
+  const history = (state.history || []).filter(h => h.details?.offerId === offerId).slice().reverse();
 
   if(history.length === 0){
     histDiv.innerHTML = '<div style="color:var(--text-faint); padding:8px;">No changes yet</div>';
@@ -749,9 +749,23 @@ function renderOfferHistory(offerId){
   histDiv.innerHTML = history.map(h=>{
     const dt = new Date(h.timestamp);
     const timeStr = dt.toLocaleString('en-GB', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
-    return `<div style="padding:6px 0; border-bottom:1px solid var(--border-soft); font-size:11px;">
-      <div style="color:var(--text-faint);">${escapeHtml(timeStr)} by ${escapeHtml(h.user || 'Unknown')}</div>
-      <div style="color:var(--text); margin-top:2px;">${escapeHtml(h.action)}</div>
+    let details = h.action;
+
+    if(h.action === 'Offer updated' && h.details?.changes){
+      details = `<strong>Updated:</strong> ${escapeHtml(h.details.changes)}`;
+    } else if(h.action === 'Offer created'){
+      details = `<strong>Created</strong> as new offer`;
+    } else if(h.action === 'Offer deleted'){
+      details = `<strong>Deleted</strong>`;
+    } else if(h.action === 'Offer archived (bulk)'){
+      details = `<strong>Archived</strong> (bulk)`;
+    } else if(h.action === 'Offer duplicated'){
+      details = `<strong>Duplicated</strong> from another offer`;
+    }
+
+    return `<div style="padding:8px 0; border-bottom:1px solid var(--border-soft); font-size:10.5px;">
+      <div style="color:var(--text-faint); margin-bottom:2px;">${escapeHtml(timeStr)} · ${escapeHtml(h.user || 'Unknown')}</div>
+      <div style="color:var(--text); line-height:1.4;">${details}</div>
     </div>`;
   }).join('');
 }
@@ -937,9 +951,20 @@ async function saveOfferFromDrawer(materials){
   const data = { advertiser, offerName, geo: draftGeos, notes: $('#f-notes').value.trim(), materials: materials || [] };
 
   if(drawerOfferId){
+    const oldOffer = state.offers.find(o=>o.id===drawerOfferId);
+    const changes = [];
+
+    if(oldOffer.offerName !== offerName) changes.push(`name: "${oldOffer.offerName}" → "${offerName}"`);
+    if(oldOffer.advertiser !== advertiser) changes.push(`advertiser: "${oldOffer.advertiser}" → "${advertiser}"`);
+    if(JSON.stringify(oldOffer.geo) !== JSON.stringify(draftGeos)) changes.push(`geo: [${(oldOffer.geo||[]).join(',')}] → [${draftGeos.join(',')}]`);
+    if((oldOffer.notes||'') !== data.notes) changes.push(`notes updated`);
+    if(JSON.stringify((oldOffer.materials||[])) !== JSON.stringify(materials)) changes.push(`materials updated`);
+
     const idx = state.offers.findIndex(o=>o.id===drawerOfferId);
     if(idx>-1) state.offers[idx] = { ...state.offers[idx], ...data };
-    logHistory('Offer updated', { offerId: drawerOfferId, offerName, advertiser });
+
+    const changeDesc = changes.length > 0 ? changes.join('; ') : 'no visible changes';
+    logHistory('Offer updated', { offerId: drawerOfferId, offerName, advertiser, changes: changeDesc });
     showToast('Offer updated');
   }else{
     const newId = uid();
