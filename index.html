@@ -728,6 +728,7 @@ function openOfferDrawer(offerId){
     <div class="field"><label>Notes</label><textarea id="f-notes" placeholder="General notes about this offer...">${escapeHtml(o?.notes||'')}</textarea></div>
     <div class="drawer-actions">
       <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+      ${o ? '<button class="btn btn-ghost" id="duplicateBtn">📋 Duplicate</button>' : ''}
       <button class="btn btn-primary" id="saveBtn">${o ? 'Save changes' : 'Add offer'}</button>
     </div>
     ${o ? `<div style="margin-top:20px; border-top:1px solid var(--border); padding-top:16px;">
@@ -818,6 +819,25 @@ function openOfferDrawer(offerId){
   $('#cancelBtn').addEventListener('click', closeDrawer);
   if(o) {
     $('#deleteBtn').addEventListener('click', ()=> deleteOffer(o.id));
+    $('#duplicateBtn').addEventListener('click', ()=>{
+      const newOffer = {
+        id: uid(),
+        family: o.family,
+        offerName: o.offerName + ' (Copy)',
+        advertiser: o.advertiser,
+        geo: [...(o.geo || [])],
+        materials: (o.materials || []).map(m => ({...m, id: uid()})),
+        notes: o.notes,
+        createdAt: new Date().toISOString(),
+        createdBy: getViewerName()
+      };
+      state.offers.push(newOffer);
+      logHistory('Offer duplicated', { offerId: newOffer.id, fromOfferId: o.id, offerName: newOffer.offerName });
+      saveState();
+      closeDrawer();
+      render();
+      showToast('Offer duplicated');
+    });
     $('#historyToggle').addEventListener('click', ()=>{
       const histDiv = $('#offerHistory');
       const isOpen = histDiv.style.display !== 'none';
