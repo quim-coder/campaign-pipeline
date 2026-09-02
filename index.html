@@ -190,7 +190,13 @@
       <button class="nav-btn active" data-fam="ECOMM">ECOMM <span class="count" id="cnt-ECOMM">0</span></button>
       <button class="nav-btn" data-fam="VSL">VSL <span class="count" id="cnt-VSL">0</span></button>
       <button class="nav-btn" data-fam="LEADGEN">LEADGEN <span class="count" id="cnt-LEADGEN">0</span></button>
-      <button class="nav-btn" data-fam="POTENTIALS">POTENTIALS <span class="count" id="cnt-POTENTIALS">0</span></button>
+    </div>
+
+    <div class="fam-group">
+      <div class="fam-label">Potentials</div>
+      <button class="nav-btn" data-fam="POTENTIALS_ECOMM">ECOMM <span class="count" id="cnt-POTENTIALS_ECOMM">0</span></button>
+      <button class="nav-btn" data-fam="POTENTIALS_VSL">VSL <span class="count" id="cnt-POTENTIALS_VSL">0</span></button>
+      <button class="nav-btn" data-fam="POTENTIALS_LEADGEN">LEADGEN <span class="count" id="cnt-POTENTIALS_LEADGEN">0</span></button>
     </div>
 
     <div class="fam-group">
@@ -227,6 +233,8 @@
           <option value="paused">Paused</option>
           <option value="retesting">Retesting</option>
           <option value="killed">Killed</option>
+          <option value="pending">Pending</option>
+          <option value="rejected">Rejected</option>
         </select>
       </div>
 
@@ -293,7 +301,9 @@ const FAMILY_ADVERTISERS = {
   ECOMM: ['ORBIO','ADTRACTIVE','DFO','ADSBRANDED','PUREHEALTH','HEROCO','COMMERCO'],
   VSL: [],
   LEADGEN: [],
-  POTENTIALS: ['ORBIO','ADTRACTIVE','DFO','ADSBRANDED','PUREHEALTH','HEROCO','COMMERCO']
+  POTENTIALS_ECOMM: ['ORBIO','ADTRACTIVE','DFO','ADSBRANDED','PUREHEALTH','HEROCO','COMMERCO'],
+  POTENTIALS_VSL: [],
+  POTENTIALS_LEADGEN: []
 };
 
 let state = { offers: [], cells: [] };
@@ -389,7 +399,9 @@ function updateCounts(){
   $('#cnt-ECOMM').textContent = famOffers('ECOMM').length;
   $('#cnt-VSL').textContent = famOffers('VSL').length;
   $('#cnt-LEADGEN').textContent = famOffers('LEADGEN').length;
-  $('#cnt-POTENTIALS').textContent = famOffers('POTENTIALS').length;
+  $('#cnt-POTENTIALS_ECOMM').textContent = famOffers('POTENTIALS_ECOMM').length;
+  $('#cnt-POTENTIALS_VSL').textContent = famOffers('POTENTIALS_VSL').length;
+  $('#cnt-POTENTIALS_LEADGEN').textContent = famOffers('POTENTIALS_LEADGEN').length;
 }
 
 function populateFilters(){
@@ -437,7 +449,7 @@ function renderMatrix(){
     return;
   }
 
-  const isPotentials = currentFam === 'POTENTIALS';
+  const isPotentials = currentFam.startsWith('POTENTIALS_');
   let html = '';
 
   if(isPotentials){
